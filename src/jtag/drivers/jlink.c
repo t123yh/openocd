@@ -51,6 +51,7 @@ static enum jaylink_jtag_version jtag_command_version;
 static uint8_t caps[JAYLINK_DEV_EXT_CAPS_SIZE];
 
 static uint32_t serial_number;
+static int srst_state = 1;
 static bool use_serial_number;
 static bool use_usb_location;
 static enum jaylink_usb_address usb_address;
@@ -339,7 +340,15 @@ static int jlink_speed(int speed)
 		speed = max_speed;
 	}
 
-	ret = jaylink_set_speed(devh, speed);
+	/* A hack to overcome a J-Link v9 limitation (not sure if v10 has this):
+	 * when srst line is asserted, setting jlink speed will deassert srst.
+	*/
+	if (srst_state == 0)
+		ret = jaylink_set_speed(devh, speed);
+	else {
+		ret = JAYLINK_OK;
+		LOG_WARNING("J-Link speed unchanged due to reset line asserted.");
+	}
 
 	if (ret != JAYLINK_OK) {
 		LOG_ERROR("jaylink_set_speed() failed: %s.",
@@ -928,7 +937,8 @@ static void jlink_runtest(int num_cycles)
 
 static void jlink_reset(int trst, int srst)
 {
-	LOG_DEBUG("TRST: %i, SRST: %i.", trst, srst);
+	 LOG_DEBUG("TRST: %i, SRST: %i.", trst, srst);
+	 srst_state = srst;
 
 	/* Signals are active low. */
 	if (srst == 0)
